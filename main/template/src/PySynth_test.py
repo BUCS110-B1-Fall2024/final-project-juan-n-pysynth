@@ -1,12 +1,11 @@
-import pandas
-import scipy 
-import math
+"""""
+*** Keyboard Synthesizer made from scratch entirely using Numpy and Pygame.
+- PySynth is a test file for running all classes simultaneously in one_file
+
+
+"""
+
 import numpy as np
-import sounddevice as sd
-import soundfile as sf
-from matplotlib import pyplot as plt
-from scipy.io.wavfile import write
-import mido
 import pygame
 
 
@@ -85,38 +84,39 @@ class AudioPlayback:
 
 class WaveformVisualizer:
     @staticmethod
-    def visualize_waveform(waveform, sampling_rate = 48000, title="Waveform Visualizer"):
-        time = np.linspace(0, len(waveform) / sampling_rate, num = len(waveform))
-        plt.figure(figsize=(10, 4))
-        plt.plot(time, waveform, color='blue')
-        plt.title(title)
-        plt.xlabel("Time (s)")
-        plt.ylabel("Amplitude")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()  
+    def visualize_waveform_pygame(screen, waveform, sampling_rate=41000, window_size=1024):
+        screen.fill((30, 30, 30))  # Dark grey background
 
-    @staticmethod
-    def plot_spectrum(waveform,sampling_rate=48000):
-        
-        #Compute Fast Fourier Transform
-        spectrum = np.fft.fft(waveform)
-        frequency = np.fft.fftfreq(len(waveform), d=1/sampling_rate)
+        width, height = screen.get_size()
+        scale = height / 2
+        midline = height // 2
 
-        #Seperate positive and negative frequencies
-        positive_frequencies = frequency[:len(frequency)//2]
-        magnitude = np.abs(spectrum[:len(spectrum)//2])
-        
-        # Create the frequency spectrum plot
-        plt.figure(figsize=(10, 4))
-        plt.plot(positive_frequencies, magnitude, color='red', label='Frequency Spectrum')
-        plt.title("Frequency Spectrum")
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Magnitude")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
+        # If waveform is stereo (2D), convert to mono by averaging channels
+        if len(waveform.shape) == 2 and waveform.shape[1] == 2:
+            waveform = np.mean(waveform, axis=1)  # Average over the second dimension (channels)
 
+        # Normalize waveform to fit vertically on the screen
+        max_value = np.max(np.abs(waveform))
+        if max_value != 0:
+            normalized_waveform = waveform / max_value * scale
+        else:
+            # If the max value is zero, we avoid dividing by zero by just using a zero array
+            normalized_waveform = np.zeros_like(waveform)
+
+        points = []
+        for i in range(len(normalized_waveform)):  # Make sure we're iterating over normalized_waveform
+            x = int(i / len(normalized_waveform) * width)
+            
+            # Ensure normalized_waveform[i] is a scalar (not an array)
+            value = float(normalized_waveform[i])  # This ensures it's a scalar value
+            
+            print(f"normalized_waveform[{i}] = {value}")  # Print individual values for debugging
+            
+            y = int(midline - value)
+            points.append((x, y))
+
+        pygame.draw.aalines(screen, (0, 255, 255), False, points)
+        pygame.display.update()  # Update only this section of the screen
 
 class MidiProcessor:
     def __init__(self):
@@ -138,30 +138,30 @@ class MidiProcessor:
     def generate_waveform(self):
         self.waveform = GenerateWaveform(self.frequency, self.amplitude)
 
-    def play_notes(self,global_volume=0.2):
+    def play_notes(self, global_volume=0.2):
         if not self.active_keys:
-            return
+            return np.zeros(41000)  # Return silence if no keys are active
 
         waveforms = []
         for key in self.active_keys:
             note = self.key_to_note.get(key, None)
-            
-            if note is not None:
-                frequency = self.midi_to_frequency(note)
-            else: 
-                frequency = 0 
+            frequency = self.midi_to_frequency(note) if note else 0
             generator = GenerateWaveform(frequency, self.amplitude, self.duration)
             waveform = generator.generate_waveform(self.wave_type)
             waveforms.append(waveform)
 
         combined_waveform = np.sum(waveforms, axis=0)
-        if np.max(np.abs(combined_waveform)) != 0:
-            combined_waveform /= np.max(np.abs(combined_waveform))
 
-        player = AudioPlayback(combined_waveform,global_volume)
-        player.play_waveform()
+        if np.max(np.abs(combined_waveform)) > 0:
+            combined_waveform /= np.max(np.abs(combined_waveform))  # Normalize
 
-    #Normalizing frequency to 12-Tet 
+        combined_waveform *= global_volume
+        player = AudioPlayback(combined_waveform, global_volume)
+        player.play_waveform()  # Play the audio
+        
+        return combined_waveform
+    
+     #Normalizing frequency to 12-Tet musical notes
     def midi_to_frequency(self, midi_note):
         return 440.0 * 2**((midi_note - 69) / 12.0)
 
@@ -219,46 +219,63 @@ class Slider:
 class SynthesizerAppController:
     def __init__(self):
         pygame.init()
-        screen_width = 800
-        slider_width = 300
-        slider_x = (screen_width - slider_width) // 2  # Center horizontally
-        slider = Slider(slider_x, 100, slider_width, 20, 0, 3, 0, label="Wave Type")
-        self.screen = pygame.display.set_mode((1000, screen_width))
-        pygame.display.set_caption("Synthesizer interface")
         
+        # Screen dimensions
+        self.screen_width = 800
+        self.screen_height = 1000
+        slider_width = 300
+        slider_x = (self.screen_width - slider_width) // 2  # Center horizontally
+
+        # Set up display
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        pygame.display.set_caption("Synthesizer Interface")
+        
+        # Initialize the processor
         self.processor = MidiProcessor()
-
-        # Define sliders for wave type, frequency, amplitude, and duration
-        self.wavetype_slider = Slider(slider_x, 30, slider_width, 20, 0, 3, 0, "Wave Type")
-        self.frequency_slider = Slider(slider_x, 60, slider_width, 20, 20, 2000, 440, "Frequency")
-        self.amplitude_slider = Slider(slider_x, 90, slider_width, 20, -1000, 1000, 0.2, "Volume")
-        self.duration_slider = Slider(slider_x, 120, slider_width, 20, 0.01, 2, 0.5, "Duration")
-        self.global_volume_slider = Slider(slider_x, 150, slider_width, 20, 0, 1, 0.2, "Global Volume")
+        self.key_to_note = self.processor.key_to_note
+        self.note_to_index = {note: i for i, note in enumerate(self.key_to_note.values())}
 
 
-        self.font = pygame.font.SysFont("Arial", 24)
+
+        # Define sliders
+        self.wavetype_slider = Slider(slider_x, 30, slider_width, 20, 0, 4, 0, "Wave Type")
+        self.frequency_slider = Slider(slider_x, 80, slider_width, 20, 20, 2000, 440, "Frequency")
+        self.amplitude_slider = Slider(slider_x, 130, slider_width, 20,-1000, 1000, 0.2, "Volume")
+        self.duration_slider = Slider(slider_x, 180, slider_width, 20,0.01, 2, 0.5, "Duration")
+        self.global_volume_slider = Slider(slider_x, 230, slider_width, 20, 0, 1, 0.2, "Global Volume")
+
+        # Load and scale the piano image
+        image_path = "/Users/jnaran/Documents/FinalProject/main/template/assets/Pixel Piano 1.0/88 Keys Pianos/Piano1.png"
+        self.piano_image = pygame.image.load(image_path)
+        self.piano_image = pygame.transform.scale(self.piano_image, (600, 200))
+        self.piano_rect = self.piano_image.get_rect(center=(self.screen_width // 2, self.screen_height - 300))
+        
+        # Load key sprites
+        key_path = "/Users/jnaran/Documents/FinalProject/main/template/assets/Pixel Piano 1.0/Keys/White1.png"
+        pressed_key_path = "/Users/jnaran/Documents/FinalProject/main/template/assets/Pixel Piano 1.0/Keys/Gray3Pressed.png"
+        self.key_sprite = pygame.image.load(key_path)
+        self.pressed_key_sprite = pygame.image.load(pressed_key_path)
 
     def run_synth(self):
         running = True
+        generated_waveform = np.zeros(41000)
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-
                 elif event.type == pygame.KEYDOWN:
                     self.processor.active_keys.add(event.key)
-                    self.processor.play_notes()
-
+                    generated_waveform = self.processor.play_notes()
                 elif event.type == pygame.KEYUP:
                     if event.key in self.processor.active_keys:
                         self.processor.active_keys.remove(event.key)
 
-                # Handle events for all sliders
-                for slider in [self.wavetype_slider, self.frequency_slider, self.amplitude_slider, self.duration_slider,self.global_volume_slider]:
+                # Handle slider events
+                for slider in [self.wavetype_slider, self.frequency_slider, self.amplitude_slider, self.duration_slider, self.global_volume_slider]:
                     slider.handle_event(event)
 
-            # Set parameters for the synthesizer based on the slider values
-            wave_type = ['sine', 'square', 'triangle', 'sawtooth'][int(self.wavetype_slider.value)]  # Ensure only integer values for wave type
+            # Get and set synthesizer parameters from sliders
+            wave_type = ['sine', 'square', 'triangle', 'sawtooth'][int(self.wavetype_slider.value)]
             frequency = self.frequency_slider.value
             amplitude = self.amplitude_slider.value
             duration = self.duration_slider.value
@@ -267,22 +284,27 @@ class SynthesizerAppController:
             self.processor.set_parameters(wave_type, frequency, amplitude, duration)
             self.processor.play_notes(global_volume=global_volume)
 
-            # Clear and redraw the screen
-            self.screen.fill((255, 255, 255))  # Background color
+            # Clear and redraw screen
+            self.screen.fill((128, 128, 255))
             self.wavetype_slider.draw(self.screen)
             self.frequency_slider.draw(self.screen)
             self.amplitude_slider.draw(self.screen)
             self.duration_slider.draw(self.screen)
-            self.global_volume_slider.draw(self.screen)  # Draw the new volume slider
+            self.global_volume_slider.draw(self.screen)
+            self.screen.blit(self.piano_image, self.piano_rect.topleft)
 
+            visualizer_rect = pygame.Rect(50, 400, 700, 200)
+            pygame.draw.rect(self.screen, (0, 0, 0), visualizer_rect)  # Black background for waveform area
+            WaveformVisualizer.visualize_waveform_pygame(self.screen.subsurface(visualizer_rect), generated_waveform)
 
-            pygame.display.flip()  # Update the display
+            pygame.display.flip()
 
         pygame.quit()
 
 if __name__ == "__main__":
     app = SynthesizerAppController()
     app.run_synth()
+
 
 
 
