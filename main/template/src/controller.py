@@ -1,10 +1,13 @@
 import pygame
 import numpy as np
-from .view import WaveformVisualizer, Slider
+from .view import WaveformVisualizer, Slider, Display
 from .model import MidiProcessor
 
 class SynthesizerAppController:
     def __init__(self):
+        """"
+        Initialization function for the controller class  
+        """
         pygame.init()
         # Screen dimensions
         self.screen_width = 800
@@ -14,14 +17,13 @@ class SynthesizerAppController:
 
         # Set up display
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        self.display = Display(self.screen)
         pygame.display.set_caption("Synthesizer Interface")
         
         # Initialize the processor
         self.processor = MidiProcessor()
         self.key_to_note = self.processor.key_to_note
         self.note_to_index = {note: i for i, note in enumerate(self.key_to_note.values())}
-
-
 
         # Define sliders
         self.wavetype_slider = Slider(slider_x, 30, slider_width, 20, 0, 4, 0, "Wave Type")
@@ -31,20 +33,18 @@ class SynthesizerAppController:
         self.global_volume_slider = Slider(slider_x, 230, slider_width, 20, 0, 1, 0.2, "Global Volume")
 
         # Load and scale the piano image
-        image_path = "/Users/jnaran/Documents/FinalProject/main/template/assets/Pixel Piano 1.0/88 Keys Pianos/Piano1.png"
+        image_path = "/Users/jnaran/Documents/FinalProject/main/template/assets/Pixel Piano 1.0 Sprite/88 Keys Pianos/Piano1.png"
         self.piano_image = pygame.image.load(image_path)
         self.piano_image = pygame.transform.scale(self.piano_image, (600, 200))
         self.piano_rect = self.piano_image.get_rect(center=(self.screen_width // 2, self.screen_height - 300))
         
-        # Load key sprites
-        key_path = "/Users/jnaran/Documents/FinalProject/main/template/assets/Pixel Piano 1.0/Keys/White1.png"
-        pressed_key_path = "/Users/jnaran/Documents/FinalProject/main/template/assets/Pixel Piano 1.0/Keys/Gray3Pressed.png"
-        self.key_sprite = pygame.image.load(key_path)
-        self.pressed_key_sprite = pygame.image.load(pressed_key_path)
-
     def run_synth(self):
+        """"
+        Main loop for our Pygame Program
+        """
         running = True
         generated_waveform = np.zeros(41000)
+        self.display.display_tutorial_message()
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -52,6 +52,7 @@ class SynthesizerAppController:
                 elif event.type == pygame.KEYDOWN:
                     self.processor.active_keys.add(event.key)
                     generated_waveform = self.processor.play_notes()
+                
                 elif event.type == pygame.KEYUP:
                     if event.key in self.processor.active_keys:
                         self.processor.active_keys.remove(event.key)
@@ -79,8 +80,10 @@ class SynthesizerAppController:
             self.global_volume_slider.draw(self.screen)
             self.screen.blit(self.piano_image, self.piano_rect.topleft)
 
+
             visualizer_rect = pygame.Rect(50, 400, 700, 200)
             pygame.draw.rect(self.screen, (0, 0, 0), visualizer_rect)  # Black background for waveform area
+
             WaveformVisualizer.visualize_waveform_pygame(self.screen.subsurface(visualizer_rect), generated_waveform)
 
             pygame.display.flip()
