@@ -1,6 +1,3 @@
-
-:warning: Everything between << >> needs to be replaced (remove << >> after replacing)
-
 # PySynth: Interactive Wavetable Synthesizer 
 ## CS110 B1 Final Project  Fall, 2024 
 
