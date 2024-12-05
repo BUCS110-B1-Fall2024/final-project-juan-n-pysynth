@@ -81,7 +81,7 @@ Test Case 4:
         4. Change the duration to 1.0 second.
         5. Press the same key again.
         6. Verify that the note plays for approximately 1.0 second before stopping.
-    Expected Result:
+    Expected Outcome:
         The duration of the note should correspond to the set duration value (0.5 seconds and 1.0 second).
 
 Test Case 5:
